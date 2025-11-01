@@ -1,103 +1,69 @@
 import streamlit as st
-from collections import deque
+from usstates import usa_map, state_info
+from bfs import bfs_path
 
-# ----- Graph of US States -----
-usa_map = {
-    "Alabama": ["Florida", "Georgia", "Tennessee", "Mississippi"],
-    "Alaska": [],
-    "Arizona": ["California", "Nevada", "Utah", "Colorado", "New Mexico"],
-    "Arkansas": ["Louisiana", "Mississippi", "Tennessee", "Missouri", "Oklahoma", "Texas"],
-    "California": ["Oregon", "Nevada", "Arizona"],
-    "Colorado": ["Wyoming", "Nebraska", "Kansas", "Oklahoma", "New Mexico", "Arizona", "Utah"],
-    "Connecticut": ["New York", "Massachusetts", "Rhode Island"],
-    "Delaware": ["Maryland", "Pennsylvania", "New Jersey"],
-    "Florida": ["Alabama", "Georgia"],
-    "Georgia": ["Florida", "Alabama", "Tennessee", "North Carolina", "South Carolina"],
-    "Hawaii": [],
-    "Idaho": ["Washington", "Oregon", "Nevada", "Utah", "Wyoming", "Montana"],
-    "Illinois": ["Wisconsin", "Iowa", "Missouri", "Kentucky", "Indiana"],
-    "Indiana": ["Illinois", "Kentucky", "Ohio", "Michigan"],
-    "Iowa": ["Minnesota", "Wisconsin", "Illinois", "Missouri", "Nebraska", "South Dakota"],
-    "Kansas": ["Nebraska", "Missouri", "Oklahoma", "Colorado"],
-    "Kentucky": ["Illinois", "Indiana", "Ohio", "West Virginia", "Virginia", "Tennessee", "Missouri"],
-    "Louisiana": ["Arkansas", "Mississippi", "Texas"],
-    "Maine": ["New Hampshire"],
-    "Maryland": ["Delaware", "Pennsylvania", "Virginia", "West Virginia"],
-    "Massachusetts": ["Connecticut", "New York", "New Hampshire", "Rhode Island", "Vermont"],
-    "Michigan": ["Indiana", "Ohio", "Wisconsin", "Minnesota"],
-    "Minnesota": ["North Dakota", "South Dakota", "Iowa", "Wisconsin", "Michigan"],
-    "Mississippi": ["Alabama", "Arkansas", "Tennessee", "Louisiana"],
-    "Missouri": ["Iowa", "Illinois", "Kentucky", "Tennessee", "Arkansas", "Oklahoma", "Kansas", "Nebraska"],
-    "Montana": ["Idaho", "Wyoming", "South Dakota", "North Dakota"],
-    "Nebraska": ["Colorado", "Iowa", "Kansas", "Missouri", "South Dakota", "Wyoming"],
-    "Nevada": ["Idaho", "Utah", "Arizona", "California", "Oregon"],
-    "New Hampshire": ["Maine", "Massachusetts", "Vermont"],
-    "New Jersey": ["Delaware", "Pennsylvania", "New York"],
-    "New Mexico": ["Arizona", "Utah", "Colorado", "Oklahoma", "Texas"],
-    "New York": ["Connecticut", "Massachusetts", "Vermont", "New Jersey", "Pennsylvania", "Rhode Island"],
-    "North Carolina": ["Virginia", "Tennessee", "Georgia", "South Carolina"],
-    "North Dakota": ["Minnesota", "South Dakota", "Montana"],
-    "Ohio": ["Pennsylvania", "West Virginia", "Kentucky", "Indiana", "Michigan"],
-    "Oklahoma": ["Kansas", "Missouri", "Arkansas", "Texas", "New Mexico", "Colorado"],
-    "Oregon": ["California", "Nevada", "Idaho", "Washington"],
-    "Pennsylvania": ["New York", "New Jersey", "Delaware", "Maryland", "West Virginia", "Ohio"],
-    "Rhode Island": ["Connecticut", "Massachusetts"],
-    "South Carolina": ["Georgia", "North Carolina"],
-    "South Dakota": ["North Dakota", "Minnesota", "Iowa", "Nebraska", "Wyoming", "Montana"],
-    "Tennessee": ["Kentucky", "Virginia", "North Carolina", "Georgia", "Alabama", "Mississippi", "Arkansas", "Missouri"],
-    "Texas": ["New Mexico", "Oklahoma", "Arkansas", "Louisiana"],
-    "Utah": ["Idaho", "Wyoming", "Colorado", "New Mexico", "Arizona", "Nevada"],
-    "Vermont": ["New York", "New Hampshire", "Massachusetts"],
-    "Virginia": ["Kentucky", "West Virginia", "Maryland", "North Carolina", "Tennessee"],
-    "Washington": ["Idaho", "Oregon"],
-    "West Virginia": ["Ohio", "Pennsylvania", "Maryland", "Virginia", "Kentucky"],
-    "Wisconsin": ["Minnesota", "Iowa", "Illinois", "Michigan"],
-    "Wyoming": ["Montana", "South Dakota", "Nebraska", "Colorado", "Utah", "Idaho"]
-}
-
-from collections import deque
-# ----- BFS Function -----
-def bfs_path(graph, start, goal):
-    queue = deque([start])
-    visited = set()
-    parent = {}
-
-    while queue:
-        current = queue.popleft()
-        visited.add(current)
-
-        if current == goal:
-            # reconstruct path
-            path = [current]
-            while current in parent:
-                current = parent[current]
-                path.append(current)
-            path.reverse()
-            return path
-
-        for neighbor in graph[current]:
-            if neighbor not in visited and neighbor not in queue:
-                queue.append(neighbor)
-                parent[neighbor] = current
-    return None
-
-# ----- Streamlit UI -----
-st.title("🗺️ Road Trip Planner - BFS Shortest Route")
-st.write("Select your starting state and destination state:")
+st.title("🗺️ Road Trip Planner - BFS Shortest Route with Must-Visit States")
+st.write("Plan your road trip and include must-visit states in order!")
 
 states = sorted(list(usa_map.keys()))
-start_state = st.selectbox("Start State", states)
-end_state = st.selectbox("Destination State", states)
+start_default = states.index("Washington")
+end_default = states.index("Florida")
 
+start_state = st.selectbox("Start State", states, index=start_default)
+end_state = st.selectbox("Destination State", states, index=end_default)
 
-if st.button("Find Shortest Route"):
+# Multi-select for must-visit states
+must_visit = st.multiselect(
+    "⭐ Select Must-Visit States (in order)",
+    options=[s for s in states if s not in [start_state, end_state]],
+)
+
+if st.button("Find Route"):
     if start_state == end_state:
         st.warning("Start and destination states are the same!")
     else:
-        path = bfs_path(usa_map, start_state, end_state)
-        if path:
-            st.success("Shortest path found!")
-            st.write(" -> ".join(path))
-        else:
-            st.error("No path found between these states.")
+        # Build full path by connecting segments
+        full_path = []
+        waypoints = [start_state] + must_visit + [end_state]
 
+        for i in range(len(waypoints) - 1):
+            segment = bfs_path(usa_map, waypoints[i], waypoints[i + 1])
+            if segment is None:
+                st.error(f"No path found between {waypoints[i]} and {waypoints[i+1]}.")
+                full_path = None
+                break
+            if i > 0:
+                # Avoid repeating the connecting state
+                segment = segment[1:]
+            full_path.extend(segment)
+
+        if full_path:
+            st.success("✅ Full route including must-visit states found!")
+            st.write(" → ".join(full_path))
+            
+            # --- Route Summary ---
+            st.subheader("📍 Route Summary")
+            st.write(f"**Start:** {start_state}")
+            st.write(f"**End:** {end_state}")
+            if must_visit:
+                st.write(f"**Must-Visit Stops (in order):** {', '.join(must_visit)}")
+            st.write(f"**Total states visited:** {len(full_path)}")
+
+            # --- Learn about states ---
+            total_drive_time = 0
+            st.subheader("🔎 Learn About Each State")
+            for state in full_path:
+                with st.expander(state):
+                    info = state_info.get(state)
+                    if info:
+                        st.write(f"**Fun Fact:** {info['fun_fact']}")
+                        st.write("**Things to Do:**")
+                        for act in info["things_to_do"]:
+                            st.write(f"• {act}")
+                        st.write(f"**Estimated drive time to next state:** {info['drive_time']} hrs")
+                        total_drive_time += info['drive_time']
+                    else:
+                        st.write("No additional info available.")
+
+            st.subheader("🧭 Route Insights")
+            st.write(f"Estimated total driving time: **{total_drive_time} hours**")
